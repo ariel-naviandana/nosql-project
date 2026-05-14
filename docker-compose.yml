@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: banking_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: banking_db
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - banking_network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: banking_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass password123
+    volumes:
+      - redis_data:/data
+    networks:
+      - banking_network
+
+  app:
+    build: .
+    container_name: banking_app
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/banking_db?authSource=admin
+      - MONGODB_DATABASE=banking_db
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=password123
+      - JWT_SECRET=super-secret-jwt-key-banking-2024
+      - PORT=8080
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - banking_network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  banking_network:
+    driver: bridge
