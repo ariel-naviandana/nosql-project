@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7.0
     container_name: banking_mongodb
     restart: always
     ports:
-      - "27017:27017"
+      - "27018:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123
@@ -15,6 +13,12 @@ services:
       - mongodb_data:/data/db
     networks:
       - banking_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   redis:
     image: redis:7.2-alpine
@@ -27,6 +31,12 @@ services:
       - redis_data:/data
     networks:
       - banking_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password123", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   app:
     build: .
@@ -42,8 +52,10 @@ services:
       - JWT_SECRET=super-secret-jwt-key-banking-2024
       - PORT=8080
     depends_on:
-      - mongodb
-      - redis
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - banking_network
 

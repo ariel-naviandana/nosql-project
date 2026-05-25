@@ -21,18 +21,32 @@ func main() {
 	cfg := config.Load()
 
 	// ===== CONNECT MONGODB =====
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
-	if err != nil {
-		log.Fatalf("Gagal koneksi MongoDB: %v", err)
+	var mongoClient *mongo.Client
+	maxRetries := 10
+	for i := 1; i <= maxRetries; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
+		if err != nil {
+			cancel()
+			log.Printf("Percobaan %d/%d - Gagal koneksi MongoDB: %v", i, maxRetries, err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if err := client.Ping(ctx, nil); err != nil {
+			cancel()
+			log.Printf("Percobaan %d/%d - MongoDB tidak bisa di-ping: %v", i, maxRetries, err)
+			client.Disconnect(context.Background())
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		cancel()
+		mongoClient = client
+		break
+	}
+	if mongoClient == nil {
+		log.Fatalf("Gagal koneksi MongoDB setelah %d percobaan", maxRetries)
 	}
 	defer mongoClient.Disconnect(context.Background())
-
-	if err := mongoClient.Ping(ctx, nil); err != nil {
-		log.Fatalf("MongoDB tidak bisa di-ping: %v", err)
-	}
 	log.Println("✅ MongoDB terhubung")
 
 	mongoDB := mongoClient.Database(cfg.MongoDB)
@@ -44,7 +58,9 @@ func main() {
 		DB:       0,
 	})
 
-	if err := redisClient.Ping(ctx).Err(); err != nil {
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer redisCancel()
+	if err := redisClient.Ping(redisCtx).Err(); err != nil {
 		log.Fatalf("Gagal koneksi Redis: %v", err)
 	}
 	log.Println("✅ Redis terhubung")
